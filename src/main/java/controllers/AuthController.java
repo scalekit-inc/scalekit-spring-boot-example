@@ -1,10 +1,7 @@
 package controllers;
 
 import com.scalekit.ScalekitClient;
-import com.scalekit.internal.http.AuthenticationOptions;
-import com.scalekit.internal.http.AuthenticationResponse;
-import com.scalekit.internal.http.AuthorizationUrlOptions;
-import com.scalekit.internal.http.IdTokenClaims;
+import com.scalekit.internal.http.*;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -61,9 +58,34 @@ public class AuthController {
     @GetMapping("/callback")
     public RedirectView callbackHandler(@RequestParam(required = false) String code,
                                         @RequestParam(required = false, name = "error_description") String errorDescription,
+                                        @RequestParam(required = false, name = "idp_initiated_login") String idpInitiatedLoginToken,
+
                                         HttpServletResponse response) throws IOException {
         if (errorDescription != null) {
             response.sendError(HttpStatus.BAD_REQUEST.value(), errorDescription);
+            return null;
+        }
+        if (idpInitiatedLoginToken != null) {
+            IdpInitiatedLoginClaims idpInitiatedLoginClaims = scalekit
+                    .authentication()
+                    .getIdpInitiatedLoginClaims(idpInitiatedLoginToken);
+            if (idpInitiatedLoginClaims == null) {
+                response.sendError(HttpStatus.BAD_REQUEST.value(), "Invalid idp_initiated_login token");
+                return null;
+            }
+
+            AuthorizationUrlOptions options = new AuthorizationUrlOptions();
+            if (idpInitiatedLoginClaims.getConnectionID() != null) {
+                options.setConnectionId(idpInitiatedLoginClaims.getConnectionID());
+            }
+            if (idpInitiatedLoginClaims.getOrganizationID() != null) {
+                options.setOrganizationId(idpInitiatedLoginClaims.getOrganizationID());
+            }
+            if (idpInitiatedLoginClaims.getLoginHint() != null) {
+                options.setLoginHint(idpInitiatedLoginClaims.getLoginHint());
+            }
+            String url = scalekit.authentication().getAuthorizationUrl(redirectUrl, options).toString();
+            response.sendRedirect(url);
             return null;
         }
         if (code == null || code.isEmpty()) {
